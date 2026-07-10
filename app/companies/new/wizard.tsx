@@ -22,6 +22,7 @@ import {
 } from "@/lib/questions";
 import { missingAnswers, type Answers } from "@/lib/scoring";
 
+import { updateAssessment } from "../[id]/edit/actions";
 import { submitAssessment } from "./actions";
 import { MonetisationCard, ScaleCard } from "./cards";
 import { SetupStep } from "./setup-step";
@@ -35,6 +36,22 @@ interface Draft {
   accumulationAsset: string;
   assessorNotes: string;
 }
+
+export interface WizardInitial {
+  setup: CompanySetup;
+  answers: Answers;
+  accumulationAsset: string;
+  assessorNotes: string;
+}
+
+/**
+ * "create" starts blank and autosaves a resumable draft to localStorage.
+ * "edit" prefills from the latest stored version and does not autosave, so a
+ * stale local draft can never shadow newer database state (HANDOVER §2.4).
+ */
+export type WizardMode =
+  | { kind: "create" }
+  | { kind: "edit"; companyId: string; initial: WizardInitial };
 
 const LAYER_COLOR: Record<LayerId, string> = {
   l1: "text-layer-1",
@@ -74,21 +91,26 @@ const STEP_LABELS = [
   "Review",
 ];
 
-export function Wizard() {
-  const [loaded, setLoaded] = useState(false);
+export function Wizard({ mode = { kind: "create" } }: { mode?: WizardMode }) {
+  const isEdit = mode.kind === "edit";
+  const seed = isEdit ? mode.initial : null;
+
+  const [loaded, setLoaded] = useState(isEdit);
   const [step, setStep] = useState(0);
-  const [setup, setSetup] = useState<CompanySetup>(emptySetup);
-  const [answers, setAnswers] = useState<Answers>({});
-  const [accumulationAsset, setAccumulationAsset] = useState("");
-  const [assessorNotes, setAssessorNotes] = useState("");
+  const [setup, setSetup] = useState<CompanySetup>(() => seed?.setup ?? emptySetup());
+  const [answers, setAnswers] = useState<Answers>(() => seed?.answers ?? {});
+  const [accumulationAsset, setAccumulationAsset] = useState(seed?.accumulationAsset ?? "");
+  const [assessorNotes, setAssessorNotes] = useState(seed?.assessorNotes ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Hydrate from localStorage after mount, so a refresh mid-wizard keeps work.
-  // localStorage is unavailable during SSR, so this must run in an effect; the
-  // `loaded` guard renders "Loading…" on both server and first client paint, so
-  // there is no hydration mismatch despite the state writes below.
+  // Create mode hydrates a resumable draft from localStorage after mount, so a
+  // refresh keeps work. localStorage is unavailable during SSR, so this runs in
+  // an effect; the `loaded` guard renders "Loading…" on both server and first
+  // client paint, avoiding a hydration mismatch. Edit mode skips this entirely
+  // (loaded starts true) and prefills from the database instead.
   useEffect(() => {
+    if (isEdit) return;
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
@@ -104,14 +126,14 @@ export function Wizard() {
       // Corrupt draft: ignore and start fresh.
     }
     setLoaded(true);
-  }, []);
+  }, [isEdit]);
 
-  // Autosave every change once hydrated.
+  // Autosave every change once hydrated (create mode only).
   useEffect(() => {
-    if (!loaded) return;
+    if (isEdit || !loaded) return;
     const draft: Draft = { step, setup, answers, accumulationAsset, assessorNotes };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
-  }, [loaded, step, setup, answers, accumulationAsset, assessorNotes]);
+  }, [isEdit, loaded, step, setup, answers, accumulationAsset, assessorNotes]);
 
   if (!loaded) {
     return <p className="mt-10 text-ink-soft">Loading…</p>;
@@ -125,19 +147,27 @@ export function Wizard() {
   async function onSubmit() {
     setSubmitting(true);
     setError(null);
-    // Clear the draft up front so a successful submit (which redirects and never
-    // returns) leaves nothing stale behind. Restored below if the submit fails.
-    localStorage.removeItem(STORAGE_KEY);
-    const result = await submitAssessment({
-      setup,
-      answers,
-      accumulationAsset,
-      assessorNotes,
-    });
+    // Create mode clears its draft up front so a successful submit (which
+    // redirects and never returns) leaves nothing stale behind; restored below
+    // if the submit fails. Edit mode keeps no draft.
+    if (!isEdit) localStorage.removeItem(STORAGE_KEY);
+
+    const result = isEdit
+      ? await updateAssessment({
+          companyId: mode.companyId,
+          setup,
+          answers,
+          accumulationAsset,
+          assessorNotes,
+        })
+      : await submitAssessment({ setup, answers, accumulationAsset, assessorNotes });
+
     // A successful submit redirects and never returns; reaching here is a failure.
     if (result && !result.ok) {
-      const draft: Draft = { step, setup, answers, accumulationAsset, assessorNotes };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
+      if (!isEdit) {
+        const draft: Draft = { step, setup, answers, accumulationAsset, assessorNotes };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
+      }
       setError(result.error);
       setSubmitting(false);
     }
@@ -246,6 +276,8 @@ export function Wizard() {
         total={STEPS.length}
         canSubmit={missing.length === 0 && setup.name.trim() !== "" && setup.domain.trim() !== ""}
         submitting={submitting}
+        submitLabel={isEdit ? "Save new version" : "Create assessment"}
+        busyLabel={isEdit ? "Saving…" : "Creating…"}
         onBack={() => setStep((s) => Math.max(0, s - 1))}
         onNext={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))}
         onSubmit={onSubmit}
@@ -363,6 +395,8 @@ function Nav({
   total,
   canSubmit,
   submitting,
+  submitLabel,
+  busyLabel,
   onBack,
   onNext,
   onSubmit,
@@ -371,6 +405,8 @@ function Nav({
   total: number;
   canSubmit: boolean;
   submitting: boolean;
+  submitLabel: string;
+  busyLabel: string;
   onBack: () => void;
   onNext: () => void;
   onSubmit: () => void;
@@ -394,7 +430,7 @@ function Nav({
           disabled={!canSubmit || submitting}
           className="bg-accent text-paper font-medium px-6 py-2 rounded-sharp border-[1.5px] border-ink offset-shadow offset-shadow-hover focus-ink disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {submitting ? "Creating…" : "Create assessment"}
+          {submitting ? busyLabel : submitLabel}
         </button>
       ) : (
         <button
