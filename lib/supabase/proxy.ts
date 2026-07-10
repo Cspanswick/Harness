@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { supabaseEnv } from "./env";
 
 /** Routes reachable without a session. Everything else requires auth (§2). */
-const PUBLIC_PATHS = ["/", "/login", "/auth"];
+const PUBLIC_PATHS = ["/", "/login", "/enter", "/auth"];
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some(
