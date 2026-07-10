@@ -67,4 +67,3 @@ Every company lives as its own record with **versioned assessments** — re-run 
 ## Honest limits
 
 The model assumes model-intelligence commoditisation continues; if one lab opens a durable capability gap, value snaps back to the model layer and every harness moat thins. It underweights brand and distribution, which remain real moats. And scores are structured judgment, not measurement — the tool's value is forcing the right questions in the right order, not manufacturing false precision. Use it as a lens, not a law.
-—————————————————–———
