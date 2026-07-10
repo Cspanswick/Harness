@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { safeRedirectPath } from "@/lib/safe-redirect";
 
 import { LoginForm } from "./login-form";
@@ -26,6 +28,14 @@ export default async function LoginPage({
       )}
 
       <LoginForm next={safeRedirectPath(next)} />
+
+      <p className="mt-8 text-sm text-ink-soft">
+        Have a team access code?{" "}
+        <Link href="/enter" className="text-accent underline underline-offset-4 focus-ink">
+          Enter without email
+        </Link>
+        .
+      </p>
     </main>
   );
 }
