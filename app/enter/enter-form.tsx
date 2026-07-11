@@ -1,10 +1,12 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { enterWithCode } from "./actions";
 
 export function EnterForm() {
+  const router = useRouter();
   const [code, setCode] = useState("");
   const [status, setStatus] = useState<"idle" | "submitting" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -13,10 +15,19 @@ export function EnterForm() {
     event.preventDefault();
     setStatus("submitting");
     setError(null);
-    const result = await enterWithCode(code);
-    // Success redirects and never returns; reaching here is a failure.
-    if (result && !result.ok) {
+    try {
+      const result = await enterWithCode(code);
+      if (result.ok) {
+        // The action set the session cookies; navigate now that they're committed.
+        router.replace("/companies");
+        router.refresh();
+        return;
+      }
       setError(result.error);
+      setStatus("error");
+    } catch (err) {
+      // Never leave the button stuck on "Entering…": surface the failure.
+      setError(err instanceof Error ? err.message : "Something went wrong signing in.");
       setStatus("error");
     }
   }

@@ -2,11 +2,9 @@
 
 import { timingSafeEqual } from "node:crypto";
 
-import { redirect } from "next/navigation";
-
 import { createClient } from "@/lib/supabase/server";
 
-export type EnterResult = { ok: false; error: string };
+export type EnterResult = { ok: true } | { ok: false; error: string };
 
 /** Constant-time string compare so the access code can't be guessed by timing. */
 function safeEqual(a: string, b: string): boolean {
@@ -44,10 +42,11 @@ export async function enterWithCode(code: string): Promise<EnterResult> {
   if (error) {
     return {
       ok: false,
-      error:
-        "The shared account could not sign in. Check HARNESS_ACCOUNT_EMAIL / HARNESS_ACCOUNT_PASSWORD match a confirmed Supabase user.",
+      error: `Shared account sign-in failed: ${error.message}. Check HARNESS_ACCOUNT_EMAIL / HARNESS_ACCOUNT_PASSWORD match a confirmed Supabase user.`,
     };
   }
 
-  redirect("/companies");
+  // Navigation happens client-side after this returns, so the session cookies
+  // set by signInWithPassword are committed before the redirect request.
+  return { ok: true };
 }
