@@ -21,9 +21,11 @@ function safeEqual(a: string, b: string): boolean {
  * workspace by design (HANDOVER §2) — created_by will be the shared account.
  */
 export async function enterWithCode(code: string): Promise<EnterResult> {
-  const expected = process.env.APP_ACCESS_CODE;
-  const email = process.env.HARNESS_ACCOUNT_EMAIL;
-  const password = process.env.HARNESS_ACCOUNT_PASSWORD;
+  // Trim env values: Vercel's value box is a textarea, so a trailing newline or
+  // space is easy to save by accident and would otherwise never match.
+  const expected = process.env.APP_ACCESS_CODE?.trim();
+  const email = process.env.HARNESS_ACCOUNT_EMAIL?.trim();
+  const password = process.env.HARNESS_ACCOUNT_PASSWORD?.trim();
 
   if (!expected || !email || !password) {
     return {
@@ -33,7 +35,7 @@ export async function enterWithCode(code: string): Promise<EnterResult> {
     };
   }
 
-  if (!code || !safeEqual(code, expected)) {
+  if (!code || !safeEqual(code.trim(), expected)) {
     return { ok: false, error: "Incorrect access code." };
   }
 
